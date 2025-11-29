@@ -28,6 +28,28 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
 
+  // Helper: Decode HTML Entities (e.g. &amp; -> &)
+  const decodeHtml = (html: string) => {
+    const txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
+  };
+
+  // Helper: Robust Meta Tag Extractor
+  // Handles both <meta property="k" content="v"> and <meta content="v" property="k">
+  // Handles single and double quotes
+  const extractMeta = (html: string, key: string) => {
+    // Try style 1: property=key ... content=value
+    let match = html.match(new RegExp(`(?:name|property)=["']${key}["'][^>]*content=["']([^"']+)["']`, 'i'));
+    if (match && match[1]) return decodeHtml(match[1]);
+
+    // Try style 2: content=value ... property=key
+    match = html.match(new RegExp(`content=["']([^"']+)["'][^>]*(?:name|property)=["']${key}["']`, 'i'));
+    if (match && match[1]) return decodeHtml(match[1]);
+
+    return null;
+  };
+
   // Smart URL Handler: Extracts URL from text blobs (common in Douyin/TikTok shares)
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -112,13 +134,18 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
            const html = await fetchHtmlWithProxy(url);
            
            if (html) {
-             // Extract Title
-             let extractedTitle = '';
-             const ogTitleMatch = html.match(/meta property="og:title" content="(.*?)"/);
-             const titleMatch = html.match(/<title>(.*?)<\/title>/);
+             // Extract Title using robust helper
+             // Priority: og:title -> description -> <title>
+             let extractedTitle = extractMeta(html, 'og:title');
+             
+             if (!extractedTitle) {
+               extractedTitle = extractMeta(html, 'description');
+             }
 
-             if (ogTitleMatch && ogTitleMatch[1]) extractedTitle = ogTitleMatch[1];
-             else if (titleMatch && titleMatch[1]) extractedTitle = titleMatch[1];
+             if (!extractedTitle) {
+                const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+                if (titleMatch && titleMatch[1]) extractedTitle = decodeHtml(titleMatch[1]);
+             }
 
              if (extractedTitle) {
                 const cleanTitle = extractedTitle
@@ -128,10 +155,10 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
                 setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
              }
 
-             // Extract Image
-             const imgMatch = html.match(/meta property="og:image" content="(.*?)"/);
-             if (imgMatch && imgMatch[1]) {
-                setThumbnailUrl(prev => (!prev) ? imgMatch[1] : prev);
+             // Extract Image using robust helper
+             const imgUrl = extractMeta(html, 'og:image');
+             if (imgUrl) {
+                setThumbnailUrl(prev => (!prev) ? imgUrl : prev);
              }
            }
         }
@@ -141,9 +168,14 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
 
             if (html) {
               // Extract Title
-              const titleMatch = html.match(/<meta [^>]*?og:title[^>]*?content="(.*?)"/) || html.match(/<title>(.*?)<\/title>/);
-              if (titleMatch && titleMatch[1]) {
-                  const cleanTitle = titleMatch[1]
+              let extractedTitle = extractMeta(html, 'og:title');
+              if (!extractedTitle) {
+                 const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+                 if (titleMatch && titleMatch[1]) extractedTitle = decodeHtml(titleMatch[1]);
+              }
+
+              if (extractedTitle) {
+                  const cleanTitle = extractedTitle
                       .replace(' - 小红书', '')
                       .replace('_小红书', '')
                       .trim();
@@ -151,9 +183,8 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
               }
 
               // Extract Image
-              const imgMatch = html.match(/<meta [^>]*?og:image[^>]*?content="(.*?)"/);
-              if (imgMatch && imgMatch[1]) {
-                  let imgUrl = imgMatch[1];
+              let imgUrl = extractMeta(html, 'og:image');
+              if (imgUrl) {
                   // Handle protocol-relative URLs
                   if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl;
                   // Handle escaped unicode in JSON responses sometimes embedded in HTML
