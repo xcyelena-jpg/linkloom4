@@ -60,7 +60,7 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
         }
       } catch (e) { console.log("Could not extract YT thumb"); }
     }
-    else if (lowerUrl.includes('xiaohongshu.com')) detectedPlatform = PlatformDefaults.XIAOHONGSHU;
+    else if (lowerUrl.includes('xiaohongshu.com') || lowerUrl.includes('xhslink.com')) detectedPlatform = PlatformDefaults.XIAOHONGSHU;
     else if (lowerUrl.includes('douyin.com')) detectedPlatform = PlatformDefaults.DOUYIN;
     else if (lowerUrl.includes('tiktok.com')) detectedPlatform = 'TikTok';
     else if (lowerUrl.includes('bilibili.com')) detectedPlatform = 'Bilibili';
@@ -82,16 +82,24 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
 
       try {
         // STRATEGY 1: DOUYIN / TIKTOK via CORS Proxy
-        // We fetch the page HTML directly via a proxy to find og:image and title
         if (lowerUrl.includes('douyin.com') || lowerUrl.includes('tiktok.com')) {
            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
            const response = await fetch(proxyUrl);
            const html = await response.text();
            
-           // Extract Title (look for <title> or og:title)
-           const titleMatch = html.match(/<title>(.*?)<\/title>/) || html.match(/meta property="og:title" content="(.*?)"/);
-           if (titleMatch && titleMatch[1]) {
-              const cleanTitle = titleMatch[1]
+           // Extract Title (look for og:title first, then title)
+           let extractedTitle = '';
+           const ogTitleMatch = html.match(/meta property="og:title" content="(.*?)"/);
+           const titleMatch = html.match(/<title>(.*?)<\/title>/);
+
+           if (ogTitleMatch && ogTitleMatch[1]) {
+             extractedTitle = ogTitleMatch[1];
+           } else if (titleMatch && titleMatch[1]) {
+             extractedTitle = titleMatch[1];
+           }
+
+           if (extractedTitle) {
+              const cleanTitle = extractedTitle
                 .replace('- 抖音', '')
                 .replace('- TikTok', '')
                 .trim();
@@ -100,13 +108,39 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
            }
 
            // Extract Image (look for og:image)
-           // Douyin/TikTok usually put the cover in og:image
            const imgMatch = html.match(/meta property="og:image" content="(.*?)"/);
            if (imgMatch && imgMatch[1]) {
               setThumbnailUrl(prev => (!prev) ? imgMatch[1] : prev);
            }
-        } 
-        // STRATEGY 2: Standard oEmbed (YouTube, Vimeo, etc.)
+        }
+        // STRATEGY 2: XIAOHONGSHU via CORS Proxy
+        else if (lowerUrl.includes('xiaohongshu.com') || lowerUrl.includes('xhslink.com')) {
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+            const response = await fetch(proxyUrl);
+            const html = await response.text();
+
+            // Extract Title
+            // XHS uses name="og:title" or property="og:title"
+            const titleMatch = html.match(/<meta [^>]*?og:title[^>]*?content="(.*?)"/) || html.match(/<title>(.*?)<\/title>/);
+            
+            if (titleMatch && titleMatch[1]) {
+                const cleanTitle = titleMatch[1]
+                    .replace(' - 小红书', '')
+                    .replace('_小红书', '')
+                    .trim();
+                setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
+            }
+
+            // Extract Image
+            const imgMatch = html.match(/<meta [^>]*?og:image[^>]*?content="(.*?)"/);
+            if (imgMatch && imgMatch[1]) {
+                // XHS images sometimes have no protocol
+                let imgUrl = imgMatch[1];
+                if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl;
+                setThumbnailUrl(prev => (!prev) ? imgUrl : prev);
+            }
+        }
+        // STRATEGY 3: Standard oEmbed (YouTube, Vimeo, etc.)
         else {
           const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
           const data = await response.json();
