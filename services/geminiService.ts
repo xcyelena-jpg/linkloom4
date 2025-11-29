@@ -1,14 +1,26 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AISuggestionResponse } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safety check: Don't crash if key is missing
+const apiKey = process.env.API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const analyzeContent = async (
   title: string,
   description: string,
   url: string
 ): Promise<AISuggestionResponse> => {
+  // If no API Key or no AI instance, return basic fallback immediately
+  if (!ai) {
+    console.warn("Gemini API Key is missing. Returning fallback data.");
+    return {
+      tags: ["Uncategorized"],
+      summary: "AI analysis unavailable (Missing API Key).",
+      suggestedTitle: title,
+      suggestedFolder: "General"
+    };
+  }
+
   try {
     const prompt = `
       I have a piece of content I want to save. 
