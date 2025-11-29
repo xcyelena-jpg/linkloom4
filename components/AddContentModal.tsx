@@ -36,8 +36,6 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
   };
 
   // Helper: Robust Meta Tag Extractor
-  // Handles both <meta property="k" content="v"> and <meta content="v" property="k">
-  // Handles single and double quotes
   const extractMeta = (html: string, key: string) => {
     // Try style 1: property=key ... content=value
     let match = html.match(new RegExp(`(?:name|property)=["']${key}["'][^>]*content=["']([^"']+)["']`, 'i'));
@@ -50,20 +48,19 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
     return null;
   };
 
-  // Smart URL Handler: Extracts URL from text blobs (common in Douyin/TikTok shares)
+  // Smart URL Handler: Extracts URL from text blobs
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    // Regex to extract http/https link
     const urlMatch = val.match(/(https?:\/\/[^\s]+)/);
     
     if (urlMatch) {
-       setUrl(urlMatch[0]); // Use the clean URL
+       setUrl(urlMatch[0]); 
     } else {
-       setUrl(val); // Fallback to whatever user typed
+       setUrl(val); 
     }
   };
 
-  // Auto-detect platform & Thumbnail from URL (Sync logic)
+  // Auto-detect platform from URL
   useEffect(() => {
     if (!url) return;
     
@@ -88,33 +85,56 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
     else if (lowerUrl.includes('bilibili.com')) detectedPlatform = 'Bilibili';
     else if (lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) detectedPlatform = 'Twitter';
 
-    // Only update if it's different and not manually set to something specific (unless it's 'Other')
     if (detectedPlatform !== platform) {
        setPlatform(detectedPlatform);
     }
   }, [url]);
 
-  // Helper: Multi-proxy fetcher
+  // Helper: Multi-proxy fetcher (Three-Stage Rocket)
   const fetchHtmlWithProxy = async (targetUrl: string): Promise<string | null> => {
-    const encodedUrl = encodeURIComponent(targetUrl);
+    // 1. Clean up target URL logic
+    // Douyin/TikTok often have weird query params that break proxies
+    let cleanUrl = targetUrl;
+    
+    const encodedUrl = encodeURIComponent(cleanUrl);
 
-    // Strategy 1: corsproxy.io (Fast, but sometimes blocked)
+    // --- STAGE 1: CodeTabs (Best for Redirects) ---
     try {
-      const res = await fetch(`https://corsproxy.io/?${encodedUrl}`);
-      if (res.ok) return await res.text();
+      // console.log("Trying Proxy 1: CodeTabs");
+      const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodedUrl}`);
+      if (res.ok) {
+        const text = await res.text();
+        // Check for validity (Douyin blocking often returns short JS or Verify page)
+        if (text.length > 500 && !text.includes('Security Verification') && !text.includes('验证码') && !text.includes('slider')) {
+           return text;
+        }
+      }
     } catch (e) {
-      console.warn("Proxy 1 failed, trying fallback...");
+      // console.warn("Proxy 1 failed");
     }
 
-    // Strategy 2: allorigins.win (Slower, returns JSON, often works when #1 is blocked)
+    // --- STAGE 2: CorsProxy (Fastest) ---
     try {
+      // console.log("Trying Proxy 2: CorsProxy");
+      const res = await fetch(`https://corsproxy.io/?${encodedUrl}`);
+      if (res.ok) {
+        const text = await res.text();
+        if (text.length > 500 && !text.includes('验证码') && !text.includes('verify')) return text;
+      }
+    } catch (e) {
+      // console.warn("Proxy 2 failed");
+    }
+
+    // --- STAGE 3: AllOrigins (Fallback) ---
+    try {
+      // console.log("Trying Proxy 3: AllOrigins");
       const res = await fetch(`https://api.allorigins.win/get?url=${encodedUrl}`);
       if (res.ok) {
         const data = await res.json();
-        return data.contents; // allorigins returns HTML in 'contents' field
+        if (data.contents && data.contents.length > 500) return data.contents;
       }
     } catch (e) {
-      console.warn("Proxy 2 failed.");
+      // console.warn("Proxy 3 failed");
     }
 
     return null;
@@ -134,28 +154,38 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
            const html = await fetchHtmlWithProxy(url);
            
            if (html) {
-             // Extract Title using robust helper
-             // Priority: og:title -> description -> <title>
+             // 1. Try OG Title
              let extractedTitle = extractMeta(html, 'og:title');
              
+             // 2. Try Description (often contains caption)
              if (!extractedTitle) {
                extractedTitle = extractMeta(html, 'description');
              }
 
+             // 3. Try <title> tag (Mobile view often uses this)
              if (!extractedTitle) {
                 const titleMatch = html.match(/<title>(.*?)<\/title>/i);
                 if (titleMatch && titleMatch[1]) extractedTitle = decodeHtml(titleMatch[1]);
+             }
+
+             // 4. Fallback: Try JSON data often embedded in scripts
+             if (!extractedTitle) {
+                const renderData = html.match(/render_data\s*=\s*({.*?});/);
+                if (renderData && renderData[1]) {
+                   try { extractedTitle = JSON.parse(renderData[1]).aweme.detail.desc; } catch(e){}
+                }
              }
 
              if (extractedTitle) {
                 const cleanTitle = extractedTitle
                   .replace('- 抖音', '')
                   .replace('- TikTok', '')
+                  .replace('抖音，记录美好生活', '')
                   .trim();
                 setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
              }
 
-             // Extract Image using robust helper
+             // Extract Image
              const imgUrl = extractMeta(html, 'og:image');
              if (imgUrl) {
                 setThumbnailUrl(prev => (!prev) ? imgUrl : prev);
@@ -185,15 +215,13 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
               // Extract Image
               let imgUrl = extractMeta(html, 'og:image');
               if (imgUrl) {
-                  // Handle protocol-relative URLs
                   if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl;
-                  // Handle escaped unicode in JSON responses sometimes embedded in HTML
                   imgUrl = imgUrl.replace(/\\u002F/g, "/"); 
                   setThumbnailUrl(prev => (!prev) ? imgUrl : prev);
               }
             }
         }
-        // STRATEGY C: Standard oEmbed (YouTube, Vimeo, etc.)
+        // STRATEGY C: Standard oEmbed
         else {
           const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
           const data = await response.json();
@@ -216,7 +244,7 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
       }
     };
 
-    const timer = setTimeout(fetchMetadata, 800); // Debounce
+    const timer = setTimeout(fetchMetadata, 1500); // Longer debounce to allow pasting full text
     return () => clearTimeout(timer);
   }, [url]);
 
@@ -224,7 +252,6 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
     if (!url) return;
     setIsAnalyzing(true);
     try {
-      // If title is empty, use URL as temp title for AI context
       const result = await analyzeContent(title || url, description, url);
       setTags(result.tags);
       setSummary(result.summary);
@@ -251,7 +278,7 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
     e.preventDefault();
     onSave({
       url,
-      title: title || url, // Fallback to URL if title is empty
+      title: title || url,
       description,
       platform,
       tags,
@@ -274,7 +301,6 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
 
   if (!isOpen) return null;
 
-  // Add the newly created folder to the list if it's not there yet
   const effectiveFolders = Array.from(new Set([
     ...existingFolders, 
     'General',
@@ -347,7 +373,6 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
                   placeholder="Content title"
                   className="w-full pl-4 pr-12 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
                 />
-                {/* AI Trigger Button Inside Title Input */}
                 <button
                   type="button"
                   onClick={handleAnalyze}
