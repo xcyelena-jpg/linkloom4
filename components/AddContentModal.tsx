@@ -28,6 +28,19 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
 
+  // Smart URL Handler: Extracts URL from text blobs (common in Douyin/TikTok shares)
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Regex to extract http/https link
+    const urlMatch = val.match(/(https?:\/\/[^\s]+)/);
+    
+    if (urlMatch) {
+       setUrl(urlMatch[0]); // Use the clean URL
+    } else {
+       setUrl(val); // Fallback to whatever user typed
+    }
+  };
+
   // Auto-detect platform & Thumbnail from URL
   useEffect(() => {
     if (!url) return;
@@ -190,9 +203,9 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Link URL</label>
               <input
                 required
-                type="url"
+                type="text" 
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={handleUrlChange}
                 placeholder="Paste content link..."
                 className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-indigo-500 outline-none text-base"
                 autoFocus
