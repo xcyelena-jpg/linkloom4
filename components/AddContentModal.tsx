@@ -41,7 +41,7 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
     }
   };
 
-  // Auto-detect platform & Thumbnail from URL
+  // Auto-detect platform & Thumbnail from URL (Sync logic)
   useEffect(() => {
     if (!url) return;
     
@@ -56,13 +56,13 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
         else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1].split('?')[0];
         
         if (videoId) {
-           // We prefer high quality, but standard fallback is handled by logic below
            setThumbnailUrl(`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`);
         }
       } catch (e) { console.log("Could not extract YT thumb"); }
     }
     else if (lowerUrl.includes('xiaohongshu.com')) detectedPlatform = PlatformDefaults.XIAOHONGSHU;
     else if (lowerUrl.includes('douyin.com')) detectedPlatform = PlatformDefaults.DOUYIN;
+    else if (lowerUrl.includes('tiktok.com')) detectedPlatform = 'TikTok';
     else if (lowerUrl.includes('bilibili.com')) detectedPlatform = 'Bilibili';
     else if (lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) detectedPlatform = 'Twitter';
 
@@ -72,29 +72,55 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
     }
   }, [url]);
 
-  // Auto-fetch Title/Metadata using oEmbed (noembed.com)
+  // Auto-fetch Title/Metadata using oEmbed or CORS Proxy
   useEffect(() => {
     if (!url || !url.startsWith('http')) return;
 
     const fetchMetadata = async () => {
       setIsFetchingMetadata(true);
+      const lowerUrl = url.toLowerCase();
+
       try {
-        // Using noembed.com as a public oEmbed proxy (works for YouTube, Vimeo, Twitter, etc.)
-        const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
-        const data = await response.json();
+        // STRATEGY 1: DOUYIN / TIKTOK via CORS Proxy
+        // We fetch the page HTML directly via a proxy to find og:image and title
+        if (lowerUrl.includes('douyin.com') || lowerUrl.includes('tiktok.com')) {
+           const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+           const response = await fetch(proxyUrl);
+           const html = await response.text();
+           
+           // Extract Title (look for <title> or og:title)
+           const titleMatch = html.match(/<title>(.*?)<\/title>/) || html.match(/meta property="og:title" content="(.*?)"/);
+           if (titleMatch && titleMatch[1]) {
+              const cleanTitle = titleMatch[1]
+                .replace('- 抖音', '')
+                .replace('- TikTok', '')
+                .trim();
+              
+              setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
+           }
 
-        if (data && !data.error) {
-          // Update Title safely (don't overwrite if user typed something meaningful)
-          setTitle(prev => {
-             if (!prev || prev === url) return data.title;
-             return prev;
-          });
+           // Extract Image (look for og:image)
+           // Douyin/TikTok usually put the cover in og:image
+           const imgMatch = html.match(/meta property="og:image" content="(.*?)"/);
+           if (imgMatch && imgMatch[1]) {
+              setThumbnailUrl(prev => (!prev) ? imgMatch[1] : prev);
+           }
+        } 
+        // STRATEGY 2: Standard oEmbed (YouTube, Vimeo, etc.)
+        else {
+          const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+          const data = await response.json();
 
-          // Update Thumbnail if we don't have one yet
-          setThumbnailUrl(prev => {
-             if (!prev && data.thumbnail_url) return data.thumbnail_url;
-             return prev;
-          });
+          if (data && !data.error) {
+            setTitle(prev => {
+               if (!prev || prev === url) return data.title;
+               return prev;
+            });
+            setThumbnailUrl(prev => {
+               if (!prev && data.thumbnail_url) return data.thumbnail_url;
+               return prev;
+            });
+          }
         }
       } catch (error) {
         console.error("Failed to fetch metadata", error);
