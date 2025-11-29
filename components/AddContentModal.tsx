@@ -72,7 +72,33 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
     }
   }, [url]);
 
-  // Auto-fetch Title/Metadata using oEmbed or CORS Proxy
+  // Helper: Multi-proxy fetcher
+  const fetchHtmlWithProxy = async (targetUrl: string): Promise<string | null> => {
+    const encodedUrl = encodeURIComponent(targetUrl);
+
+    // Strategy 1: corsproxy.io (Fast, but sometimes blocked)
+    try {
+      const res = await fetch(`https://corsproxy.io/?${encodedUrl}`);
+      if (res.ok) return await res.text();
+    } catch (e) {
+      console.warn("Proxy 1 failed, trying fallback...");
+    }
+
+    // Strategy 2: allorigins.win (Slower, returns JSON, often works when #1 is blocked)
+    try {
+      const res = await fetch(`https://api.allorigins.win/get?url=${encodedUrl}`);
+      if (res.ok) {
+        const data = await res.json();
+        return data.contents; // allorigins returns HTML in 'contents' field
+      }
+    } catch (e) {
+      console.warn("Proxy 2 failed.");
+    }
+
+    return null;
+  };
+
+  // Auto-fetch Title/Metadata
   useEffect(() => {
     if (!url || !url.startsWith('http')) return;
 
@@ -81,66 +107,62 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
       const lowerUrl = url.toLowerCase();
 
       try {
-        // STRATEGY 1: DOUYIN / TIKTOK via CORS Proxy
+        // STRATEGY A: DOUYIN / TIKTOK
         if (lowerUrl.includes('douyin.com') || lowerUrl.includes('tiktok.com')) {
-           const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-           const response = await fetch(proxyUrl);
-           const html = await response.text();
+           const html = await fetchHtmlWithProxy(url);
            
-           // Extract Title (look for og:title first, then title)
-           let extractedTitle = '';
-           const ogTitleMatch = html.match(/meta property="og:title" content="(.*?)"/);
-           const titleMatch = html.match(/<title>(.*?)<\/title>/);
+           if (html) {
+             // Extract Title
+             let extractedTitle = '';
+             const ogTitleMatch = html.match(/meta property="og:title" content="(.*?)"/);
+             const titleMatch = html.match(/<title>(.*?)<\/title>/);
 
-           if (ogTitleMatch && ogTitleMatch[1]) {
-             extractedTitle = ogTitleMatch[1];
-           } else if (titleMatch && titleMatch[1]) {
-             extractedTitle = titleMatch[1];
-           }
+             if (ogTitleMatch && ogTitleMatch[1]) extractedTitle = ogTitleMatch[1];
+             else if (titleMatch && titleMatch[1]) extractedTitle = titleMatch[1];
 
-           if (extractedTitle) {
-              const cleanTitle = extractedTitle
-                .replace('- 抖音', '')
-                .replace('- TikTok', '')
-                .trim();
-              
-              setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
-           }
-
-           // Extract Image (look for og:image)
-           const imgMatch = html.match(/meta property="og:image" content="(.*?)"/);
-           if (imgMatch && imgMatch[1]) {
-              setThumbnailUrl(prev => (!prev) ? imgMatch[1] : prev);
-           }
-        }
-        // STRATEGY 2: XIAOHONGSHU via CORS Proxy
-        else if (lowerUrl.includes('xiaohongshu.com') || lowerUrl.includes('xhslink.com')) {
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-            const response = await fetch(proxyUrl);
-            const html = await response.text();
-
-            // Extract Title
-            // XHS uses name="og:title" or property="og:title"
-            const titleMatch = html.match(/<meta [^>]*?og:title[^>]*?content="(.*?)"/) || html.match(/<title>(.*?)<\/title>/);
-            
-            if (titleMatch && titleMatch[1]) {
-                const cleanTitle = titleMatch[1]
-                    .replace(' - 小红书', '')
-                    .replace('_小红书', '')
-                    .trim();
+             if (extractedTitle) {
+                const cleanTitle = extractedTitle
+                  .replace('- 抖音', '')
+                  .replace('- TikTok', '')
+                  .trim();
                 setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
-            }
+             }
 
-            // Extract Image
-            const imgMatch = html.match(/<meta [^>]*?og:image[^>]*?content="(.*?)"/);
-            if (imgMatch && imgMatch[1]) {
-                // XHS images sometimes have no protocol
-                let imgUrl = imgMatch[1];
-                if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl;
-                setThumbnailUrl(prev => (!prev) ? imgUrl : prev);
+             // Extract Image
+             const imgMatch = html.match(/meta property="og:image" content="(.*?)"/);
+             if (imgMatch && imgMatch[1]) {
+                setThumbnailUrl(prev => (!prev) ? imgMatch[1] : prev);
+             }
+           }
+        }
+        // STRATEGY B: XIAOHONGSHU
+        else if (lowerUrl.includes('xiaohongshu.com') || lowerUrl.includes('xhslink.com')) {
+            const html = await fetchHtmlWithProxy(url);
+
+            if (html) {
+              // Extract Title
+              const titleMatch = html.match(/<meta [^>]*?og:title[^>]*?content="(.*?)"/) || html.match(/<title>(.*?)<\/title>/);
+              if (titleMatch && titleMatch[1]) {
+                  const cleanTitle = titleMatch[1]
+                      .replace(' - 小红书', '')
+                      .replace('_小红书', '')
+                      .trim();
+                  setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
+              }
+
+              // Extract Image
+              const imgMatch = html.match(/<meta [^>]*?og:image[^>]*?content="(.*?)"/);
+              if (imgMatch && imgMatch[1]) {
+                  let imgUrl = imgMatch[1];
+                  // Handle protocol-relative URLs
+                  if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl;
+                  // Handle escaped unicode in JSON responses sometimes embedded in HTML
+                  imgUrl = imgUrl.replace(/\\u002F/g, "/"); 
+                  setThumbnailUrl(prev => (!prev) ? imgUrl : prev);
+              }
             }
         }
-        // STRATEGY 3: Standard oEmbed (YouTube, Vimeo, etc.)
+        // STRATEGY C: Standard oEmbed (YouTube, Vimeo, etc.)
         else {
           const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
           const data = await response.json();
@@ -163,7 +185,7 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
       }
     };
 
-    const timer = setTimeout(fetchMetadata, 800); // Debounce 800ms
+    const timer = setTimeout(fetchMetadata, 800); // Debounce
     return () => clearTimeout(timer);
   }, [url]);
 
