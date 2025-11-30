@@ -520,7 +520,7 @@ const App: React.FC = () => {
            </div>
         </div>
 
-        {/* Feed Grid (Swipeable) */}
+        {/* Feed List (Swipeable) */}
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
            {filteredItems.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-[50vh] animate-in fade-in zoom-in-95 duration-500">
@@ -540,22 +540,22 @@ const App: React.FC = () => {
                         </button>
                     </div>
                 ) : (
-                    // 2. Folder/Tab Empty State - Ghost Card
+                    // 2. Folder/Tab Empty State - Ghost Card (Horizontal Style)
                     <button 
                       onClick={() => setIsAddModalOpen(true)}
-                      className="group relative w-40 aspect-[3/4] rounded-xl border-2 border-dashed border-zinc-300 dark:border-zinc-700 flex flex-col items-center justify-center gap-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+                      className="group w-full max-w-2xl h-24 mx-auto rounded-xl border-2 border-dashed border-zinc-300 dark:border-zinc-700 flex items-center justify-center gap-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
                     >
-                       <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <Plus className="w-6 h-6 text-zinc-400" />
+                       <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Plus className="w-5 h-5 text-zinc-400" />
                        </div>
-                       <p className="text-xs font-bold text-zinc-400 text-center px-2">
+                       <p className="text-xs font-bold text-zinc-400">
                           Add to {activeFilter || activeTab === 'RECENT' ? 'Collection' : activeTab}
                        </p>
                     </button>
                 )}
              </div>
            ) : (
-             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pb-24">
+             <div className="flex flex-col gap-3 pb-24 max-w-2xl mx-auto w-full">
                {filteredItems.map(item => (
                  <ContentCard 
                    key={item.id} 
