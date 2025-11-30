@@ -1,6 +1,6 @@
 
 import React, { useRef, useState } from 'react';
-import { Star } from 'lucide-react';
+import { Star, Folder } from 'lucide-react';
 import { ContentItem } from '../types';
 import PlatformIcon from './PlatformIcon';
 
@@ -33,7 +33,8 @@ const ContentCard: React.FC<ContentCardProps> = ({ item, onLongPress, onToggleFa
     setIsPressed(false);
   };
 
-  const handleJump = () => {
+  const handleJump = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!isPressed) {
       window.open(item.url, '_blank');
     }
@@ -41,73 +42,76 @@ const ContentCard: React.FC<ContentCardProps> = ({ item, onLongPress, onToggleFa
 
   return (
     <div 
-      className={`group relative bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col h-full shadow-sm transition-all duration-200 select-none ${isPressed ? 'scale-95 border-indigo-400' : 'hover:shadow-md'}`}
+      className={`group relative bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-row h-24 shadow-sm transition-all duration-200 select-none w-full ${isPressed ? 'scale-[0.98] border-indigo-400' : ''}`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onMouseDown={handleTouchStart}
       onMouseUp={handleTouchEnd}
       onMouseLeave={handleTouchEnd}
-      onContextMenu={(e) => e.preventDefault()} // Prevent native context menu on long press
+      onContextMenu={(e) => e.preventDefault()}
     >
       
-      {/* Cover Image Section - Jump Area */}
+      {/* Left: Cover Image - Jump Area - Fixed Square w-24 h-full (96px) */}
       <div 
-        className="relative w-full aspect-[4/3] bg-zinc-100 dark:bg-zinc-800 overflow-hidden cursor-pointer active:opacity-90"
+        className="relative w-24 h-full shrink-0 bg-zinc-100 dark:bg-zinc-800 border-r border-zinc-100 dark:border-zinc-800 cursor-pointer active:opacity-80"
         onClick={handleJump}
       >
         {item.thumbnailUrl ? (
           <img 
             src={item.thumbnailUrl} 
             alt={item.title} 
-            className="w-full h-full object-cover pointer-events-none" // prevent img drag interference
+            className="w-full h-full object-cover pointer-events-none"
             loading="lazy"
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-zinc-300 dark:text-zinc-600 bg-zinc-50 dark:bg-zinc-900">
-             <PlatformIcon type={item.platform} className="w-10 h-10 opacity-50 mb-2" />
+             <PlatformIcon type={item.platform} className="w-6 h-6 opacity-40" />
           </div>
         )}
         
-        {/* Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10 opacity-60 pointer-events-none"></div>
-
-        {/* Platform Badge (Top Left) */}
-        <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1.5 text-white border border-white/10 shadow-sm pointer-events-none">
-          <PlatformIcon type={item.platform} className="w-3.5 h-3.5" />
-          <span className="text-[10px] font-bold tracking-wide uppercase">{item.platform}</span>
-        </div>
-
-        {/* Favorite Button (Bottom Right) - Changed to Star */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation(); // Prevent jump when clicking star
-            onToggleFavorite(item.id);
-          }}
-          className={`absolute bottom-2 right-2 p-2 rounded-lg backdrop-blur-md border transition-all active:scale-75 shadow-lg ${
-            item.isFavorite 
-              ? 'bg-yellow-400 text-yellow-900 border-yellow-400' 
-              : 'bg-black/40 text-white border-white/20 hover:bg-black/60'
-          }`}
-        >
-          <Star className={`w-4 h-4 ${item.isFavorite ? 'fill-current' : ''}`} />
-        </button>
+        {/* Subtle Jump Hint on Hover/Touch */}
+        <div className="absolute inset-0 bg-black/0 active:bg-black/10 transition-colors" />
       </div>
 
-      {/* Content Info - Opens Details */}
+      {/* Right: Content Info - Opens Details */}
       <div 
-        className="p-3 flex flex-col flex-grow cursor-pointer active:bg-zinc-50 dark:active:bg-zinc-800 transition-colors"
+        className="flex-1 p-2.5 flex flex-col min-w-0 cursor-pointer active:bg-zinc-50 dark:active:bg-zinc-800 transition-colors"
         onClick={() => onOpenDetails(item.id)}
       >
-        {/* Title */}
-        <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 leading-tight mb-2 line-clamp-2">
-          {item.title}
-        </h3>
+        {/* Header: Platform + Title */}
+        <div className="flex flex-col gap-0.5 mb-1">
+           <div className="flex items-center gap-1.5 opacity-60">
+             <PlatformIcon type={item.platform} className="w-3 h-3" />
+             <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{item.platform}</span>
+           </div>
+           <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 leading-snug line-clamp-2">
+             {item.title}
+           </h3>
+        </div>
 
-        {/* Minimal Info Row - Removed Tags */}
-        <div className="flex justify-between items-center mt-auto">
-           <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded truncate max-w-[100px]">
-             {item.folder}
-           </span>
+        {/* Footer: Folder + Favorite */}
+        <div className="mt-auto flex items-end justify-between">
+           <div className="flex items-center gap-2">
+             {/* Limited max-width to prevent overflow */}
+             <div className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md max-w-[85px]">
+               <Folder className="w-3 h-3 shrink-0" />
+               <span className="truncate">{item.folder}</span>
+             </div>
+           </div>
+
+           <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(item.id);
+            }}
+            className={`p-1.5 rounded-lg transition-all active:scale-90 -mb-1 -mr-1 ${
+              item.isFavorite 
+                ? 'text-yellow-500' 
+                : 'text-zinc-300 dark:text-zinc-600 hover:text-zinc-400'
+            }`}
+          >
+            <Star className={`w-4 h-4 ${item.isFavorite ? 'fill-current' : ''}`} />
+          </button>
         </div>
       </div>
     </div>
