@@ -28,57 +28,46 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
 
-  // Helper: Decode HTML Entities (e.g. &amp; -> &)
-  const decodeHtml = (html: string) => {
-    const txt = document.createElement("textarea");
-    txt.innerHTML = html;
-    return txt.value;
-  };
-
-  // Helper: Robust Meta Tag Extractor
-  const extractMeta = (html: string, key: string) => {
-    // Try style 1: property=key ... content=value
-    let match = html.match(new RegExp(`(?:name|property)=["']${key}["'][^>]*content=["']([^"']+)["']`, 'i'));
-    if (match && match[1]) return decodeHtml(match[1]);
-
-    // Try style 2: content=value ... property=key
-    match = html.match(new RegExp(`content=["']([^"']+)["'][^>]*(?:name|property)=["']${key}["']`, 'i'));
-    if (match && match[1]) return decodeHtml(match[1]);
-
-    return null;
-  };
-
-  // Smart URL Handler: Extracts URL from text blobs
+  // 1. Smart Paste Handler: Separates Title from URL instantly
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    const urlMatch = val.match(/(https?:\/\/[^\s]+)/);
+    const rawText = e.target.value;
+    
+    // Regex to find http/https links
+    const urlMatch = rawText.match(/(https?:\/\/[^\s]+)/);
     
     if (urlMatch) {
-       setUrl(urlMatch[0]); 
+       const extractedUrl = urlMatch[0];
+       setUrl(extractedUrl);
+
+       // Try to extract text BEFORE or AFTER the link as the title
+       // Remove the URL from the text
+       let potentialTitle = rawText.replace(extractedUrl, '').trim();
+       
+       // Cleanup common sharing suffixes/prefixes
+       potentialTitle = potentialTitle
+         .replace(/%.*/, '') // Remove tracking params often at end
+         .replace(/复制打开抖音/g, '')
+         .replace(/复制打开小红书/g, '')
+         .replace(/，看看.*?作品/g, '') // Douyin specific
+         .replace(/[0-9]{1,2}\.[0-9]{1,2}\s+[A-Za-z0-9]+\s+/g, '') // Remove "4.18 Xyz..." pattern
+         .trim();
+
+       // If we found a decent length text, use it as title immediately (No network needed!)
+       if (potentialTitle.length > 2) {
+          setTitle(prev => !prev ? potentialTitle : prev);
+       }
     } else {
-       setUrl(val); 
+       setUrl(rawText); 
     }
   };
 
-  // Auto-detect platform from URL
+  // Auto-detect platform
   useEffect(() => {
     if (!url) return;
-    
     const lowerUrl = url.toLowerCase();
     let detectedPlatform = platform;
     
-    if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
-      detectedPlatform = PlatformDefaults.YOUTUBE;
-      try {
-        let videoId = '';
-        if (url.includes('v=')) videoId = url.split('v=')[1].split('&')[0];
-        else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1].split('?')[0];
-        
-        if (videoId) {
-           setThumbnailUrl(`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`);
-        }
-      } catch (e) { console.log("Could not extract YT thumb"); }
-    }
+    if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) detectedPlatform = PlatformDefaults.YOUTUBE;
     else if (lowerUrl.includes('xiaohongshu.com') || lowerUrl.includes('xhslink.com')) detectedPlatform = PlatformDefaults.XIAOHONGSHU;
     else if (lowerUrl.includes('douyin.com')) detectedPlatform = PlatformDefaults.DOUYIN;
     else if (lowerUrl.includes('tiktok.com')) detectedPlatform = 'TikTok';
@@ -90,161 +79,109 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
     }
   }, [url]);
 
-  // Helper: Multi-proxy fetcher (Three-Stage Rocket)
-  const fetchHtmlWithProxy = async (targetUrl: string): Promise<string | null> => {
-    // 1. Clean up target URL logic
-    // Douyin/TikTok often have weird query params that break proxies
-    let cleanUrl = targetUrl;
-    
-    const encodedUrl = encodeURIComponent(cleanUrl);
+  // 2. Microlink Fetcher (The "Cloud Browser" solution)
+  const fetchMicrolink = async (targetUrl: string) => {
+     try {
+       // api.microlink.io is a free service that renders pages and returns JSON
+       const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(targetUrl)}`;
+       const res = await fetch(apiUrl);
+       const json = await res.json();
+       
+       if (json.status === 'success' && json.data) {
+          return {
+             title: json.data.title,
+             image: json.data.image?.url,
+             description: json.data.description
+          };
+       }
+     } catch (e) {
+       console.warn("Microlink failed", e);
+     }
+     return null;
+  };
 
-    // --- STAGE 1: CodeTabs (Best for Redirects) ---
+  // Legacy Proxy Fallback (CodeTabs)
+  const fetchWithCodeTabs = async (targetUrl: string) => {
     try {
-      // console.log("Trying Proxy 1: CodeTabs");
-      const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodedUrl}`);
+      const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`);
       if (res.ok) {
-        const text = await res.text();
-        // Check for validity (Douyin blocking often returns short JS or Verify page)
-        if (text.length > 500 && !text.includes('Security Verification') && !text.includes('验证码') && !text.includes('slider')) {
-           return text;
-        }
-      }
-    } catch (e) {
-      // console.warn("Proxy 1 failed");
-    }
+         const html = await res.text();
+         if (html.length < 500 || html.includes('验证码')) return null;
+         
+         // Basic Regex extraction
+         const imgMatch = html.match(/"url_list":\["([^"]+)"/); // Douyin JSON pattern
+         const ogImg = html.match(/<meta property="og:image" content="([^"]+)"/i);
+         const titleMatch = html.match(/<title>(.*?)<\/title>/i);
 
-    // --- STAGE 2: CorsProxy (Fastest) ---
-    try {
-      // console.log("Trying Proxy 2: CorsProxy");
-      const res = await fetch(`https://corsproxy.io/?${encodedUrl}`);
-      if (res.ok) {
-        const text = await res.text();
-        if (text.length > 500 && !text.includes('验证码') && !text.includes('verify')) return text;
+         return {
+            title: titleMatch ? titleMatch[1] : null,
+            image: imgMatch ? imgMatch[1] : (ogImg ? ogImg[1] : null)
+         };
       }
-    } catch (e) {
-      // console.warn("Proxy 2 failed");
-    }
-
-    // --- STAGE 3: AllOrigins (Fallback) ---
-    try {
-      // console.log("Trying Proxy 3: AllOrigins");
-      const res = await fetch(`https://api.allorigins.win/get?url=${encodedUrl}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.contents && data.contents.length > 500) return data.contents;
-      }
-    } catch (e) {
-      // console.warn("Proxy 3 failed");
-    }
-
+    } catch(e) {}
     return null;
   };
 
-  // Auto-fetch Title/Metadata
+  // Main Fetch Effect
   useEffect(() => {
     if (!url || !url.startsWith('http')) return;
 
+    // Check if we already have a high-quality thumbnail (e.g. YouTube ID)
+    if (url.includes('youtube') || url.includes('youtu.be')) {
+       // Standard OEmbed for YouTube is best
+       fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`)
+         .then(r => r.json())
+         .then(data => {
+            if (data.title && !title) setTitle(data.title);
+            if (data.thumbnail_url) setThumbnailUrl(data.thumbnail_url);
+         })
+         .catch(() => {});
+       return;
+    }
+
     const fetchMetadata = async () => {
       setIsFetchingMetadata(true);
-      const lowerUrl = url.toLowerCase();
 
-      try {
-        // STRATEGY A: DOUYIN / TIKTOK
-        if (lowerUrl.includes('douyin.com') || lowerUrl.includes('tiktok.com')) {
-           const html = await fetchHtmlWithProxy(url);
-           
-           if (html) {
-             // 1. Try OG Title
-             let extractedTitle = extractMeta(html, 'og:title');
-             
-             // 2. Try Description (often contains caption)
-             if (!extractedTitle) {
-               extractedTitle = extractMeta(html, 'description');
-             }
+      // STRATEGY: 
+      // 1. Microlink (Best for Images)
+      // 2. CodeTabs (Backup)
+      
+      let foundData = await fetchMicrolink(url);
 
-             // 3. Try <title> tag (Mobile view often uses this)
-             if (!extractedTitle) {
-                const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-                if (titleMatch && titleMatch[1]) extractedTitle = decodeHtml(titleMatch[1]);
-             }
-
-             // 4. Fallback: Try JSON data often embedded in scripts
-             if (!extractedTitle) {
-                const renderData = html.match(/render_data\s*=\s*({.*?});/);
-                if (renderData && renderData[1]) {
-                   try { extractedTitle = JSON.parse(renderData[1]).aweme.detail.desc; } catch(e){}
-                }
-             }
-
-             if (extractedTitle) {
-                const cleanTitle = extractedTitle
-                  .replace('- 抖音', '')
-                  .replace('- TikTok', '')
-                  .replace('抖音，记录美好生活', '')
-                  .trim();
-                setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
-             }
-
-             // Extract Image
-             const imgUrl = extractMeta(html, 'og:image');
-             if (imgUrl) {
-                setThumbnailUrl(prev => (!prev) ? imgUrl : prev);
-             }
-           }
-        }
-        // STRATEGY B: XIAOHONGSHU
-        else if (lowerUrl.includes('xiaohongshu.com') || lowerUrl.includes('xhslink.com')) {
-            const html = await fetchHtmlWithProxy(url);
-
-            if (html) {
-              // Extract Title
-              let extractedTitle = extractMeta(html, 'og:title');
-              if (!extractedTitle) {
-                 const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-                 if (titleMatch && titleMatch[1]) extractedTitle = decodeHtml(titleMatch[1]);
-              }
-
-              if (extractedTitle) {
-                  const cleanTitle = extractedTitle
-                      .replace(' - 小红书', '')
-                      .replace('_小红书', '')
-                      .trim();
-                  setTitle(prev => (!prev || prev === url) ? cleanTitle : prev);
-              }
-
-              // Extract Image
-              let imgUrl = extractMeta(html, 'og:image');
-              if (imgUrl) {
-                  if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl;
-                  imgUrl = imgUrl.replace(/\\u002F/g, "/"); 
-                  setThumbnailUrl(prev => (!prev) ? imgUrl : prev);
-              }
-            }
-        }
-        // STRATEGY C: Standard oEmbed
-        else {
-          const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
-          const data = await response.json();
-
-          if (data && !data.error) {
-            setTitle(prev => {
-               if (!prev || prev === url) return data.title;
-               return prev;
-            });
-            setThumbnailUrl(prev => {
-               if (!prev && data.thumbnail_url) return data.thumbnail_url;
-               return prev;
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch metadata", error);
-      } finally {
-        setIsFetchingMetadata(false);
+      if (!foundData || !foundData.image) {
+         // Fallback if Microlink misses the image
+         const backupData = await fetchWithCodeTabs(url);
+         if (backupData) {
+            foundData = {
+               title: foundData?.title || backupData.title,
+               image: foundData?.image || backupData.image,
+               description: foundData?.description
+            };
+         }
       }
+
+      if (foundData) {
+         // Only update title if user didn't manually type/paste a good one
+         setTitle(prev => {
+            // If previous title was just the URL, overwrite it
+            if (!prev || prev === url) return foundData?.title || prev;
+            return prev; // Keep the smart-pasted title as it's often better than metadata title
+         });
+
+         if (foundData.image) {
+            let img = foundData.image;
+            // Fix relative URLs if any
+            if (img.startsWith('//')) img = 'https:' + img;
+            // Unescape common JSON slashes
+            img = img.replace(/\\u002F/g, "/"); 
+            setThumbnailUrl(img);
+         }
+      }
+
+      setIsFetchingMetadata(false);
     };
 
-    const timer = setTimeout(fetchMetadata, 1500); // Longer debounce to allow pasting full text
+    const timer = setTimeout(fetchMetadata, 1000);
     return () => clearTimeout(timer);
   }, [url]);
 
@@ -345,10 +282,11 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
                 type="text" 
                 value={url}
                 onChange={handleUrlChange}
-                placeholder="Paste content link..."
+                placeholder="Paste full text (e.g. '5.20 复制打开抖音...')"
                 className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-indigo-500 outline-none text-base"
                 autoFocus
               />
+              <p className="text-[10px] text-zinc-400 mt-1">Tip: Paste the full share text for instant title.</p>
             </div>
 
             {/* 2. Title Input with AI Button */}
@@ -359,7 +297,7 @@ const AddContentModal: React.FC<AddContentModalProps> = ({ isOpen, onClose, onSa
                    {isFetchingMetadata && (
                       <span className="flex items-center gap-1 text-[10px] normal-case text-zinc-400 font-normal animate-pulse">
                          <Loader2 className="w-3 h-3 animate-spin" />
-                         Fetching info...
+                         Fetching image...
                       </span>
                    )}
                 </div>
