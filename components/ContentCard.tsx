@@ -74,23 +74,25 @@ const ContentCard: React.FC<ContentCardProps> = ({ item, onLongPress, onToggleFa
       </div>
 
       {/* Right: Content Info - Opens Details */}
+      {/* Optimization: p-2 (was p-2.5) and justify-between to ensure footer stays at bottom without cutoff */}
       <div 
-        className="flex-1 p-2.5 flex flex-col min-w-0 cursor-pointer active:bg-zinc-50 dark:active:bg-zinc-800 transition-colors"
+        className="flex-1 p-2 flex flex-col min-w-0 cursor-pointer justify-between active:bg-zinc-50 dark:active:bg-zinc-800 transition-colors"
         onClick={() => onOpenDetails(item.id)}
       >
         {/* Header: Platform + Title */}
-        <div className="flex flex-col gap-0.5 mb-1">
+        <div className="flex flex-col gap-0.5">
            <div className="flex items-center gap-1.5 opacity-60">
              <PlatformIcon type={item.platform} className="w-3 h-3" />
              <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{item.platform}</span>
            </div>
-           <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 leading-snug line-clamp-2">
+           {/* Optimization: leading-tight (was leading-snug) for tighter 2-line fit */}
+           <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 leading-tight line-clamp-2">
              {item.title}
            </h3>
         </div>
 
         {/* Footer: Folder + Favorite */}
-        <div className="mt-auto flex items-end justify-between">
+        <div className="flex items-end justify-between">
            <div className="flex items-center gap-2">
              {/* Limited max-width to prevent overflow */}
              <div className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md max-w-[85px]">
