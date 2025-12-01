@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
@@ -14,7 +13,6 @@ import ManageFoldersModal from './components/ManageFoldersModal';
 import Toast from './components/Toast';
 import { ContentItem, PlatformDefaults } from './types';
 import { Plus, Search, Menu, Star, X, Clock, ChevronDown, Folder as FolderIcon } from 'lucide-react';
-import PlatformIcon from './components/PlatformIcon';
 
 const LOCAL_STORAGE_KEY = 'linkloom_items_v2';
 const LOCAL_STORAGE_PLATFORMS_KEY = 'linkloom_platforms_v1';
@@ -141,7 +139,7 @@ const App: React.FC = () => {
     isOpen: false,
     folder: null
   });
-  const [isManageFoldersModalOpen, setIsManageFoldersModalOpen] = useState(false); // Re-enabled for tabs
+  const [isManageFoldersModalOpen, setIsManageFoldersModalOpen] = useState(false); // Opened from Tab Bar
 
   // Detail View State
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
