@@ -1,25 +1,24 @@
 import React from 'react';
-import { LayoutGrid, Star, Zap, Plus, Video } from 'lucide-react';
-import PlatformIcon from './PlatformIcon';
+import { LayoutGrid, Star, Zap, Plus, Folder } from 'lucide-react';
 
 interface SidebarProps {
-  activePlatform: string | null;
+  activeFolder: string | null;
   showFavorites: boolean;
-  onPlatformChange: (platform: string | null) => void;
+  onFolderChange: (folder: string | null) => void;
   onToggleFavorites: (show: boolean) => void;
-  platforms: string[];
+  folders: string[];
   totalCount: number;
-  onManagePlatforms: () => void;
+  onManageFolders: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  activePlatform, 
+  activeFolder, 
   showFavorites,
-  onPlatformChange, 
+  onFolderChange, 
   onToggleFavorites,
-  platforms,
+  folders,
   totalCount,
-  onManagePlatforms
+  onManageFolders
 }) => {
   return (
     <div className="w-full h-full flex flex-col p-5 overflow-y-auto">
@@ -42,26 +41,26 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* All Items */}
         <button
           onClick={() => {
-            onPlatformChange(null);
+            onFolderChange(null);
             onToggleFavorites(false);
           }}
           className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold rounded-xl transition-all ${
-            activePlatform === null && !showFavorites
+            activeFolder === null && !showFavorites
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
               : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700'
           }`}
         >
           <div className="flex items-center gap-3">
             <LayoutGrid className="w-4 h-4" />
-            <span>All Platforms</span>
+            <span>All Items</span>
           </div>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full ${activePlatform === null && !showFavorites ? 'bg-white/20 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{totalCount}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full ${activeFolder === null && !showFavorites ? 'bg-white/20 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{totalCount}</span>
         </button>
 
         {/* My Favorites */}
         <button
           onClick={() => {
-             onPlatformChange(null);
+             onFolderChange(null);
              onToggleFavorites(true);
           }}
           className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold rounded-xl transition-all ${
@@ -75,33 +74,33 @@ const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* Platforms (Was Collections) */}
+      {/* Folders (Was Collections) */}
       <div className="space-y-1 flex-grow">
          <div className="flex items-center justify-between px-3 mb-3">
-           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Platforms</p>
+           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Collections</p>
            <button 
-             onClick={onManagePlatforms}
+             onClick={onManageFolders}
              className="w-9 h-9 flex items-center justify-center bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl shadow-md active:scale-90 transition-transform"
-             title="Manage Platforms"
+             title="Manage Collections"
            >
              <Plus className="w-5 h-5" />
            </button>
         </div>
-        {platforms.map(platform => (
-           <div key={platform} className="group relative flex items-center">
+        {folders.map(folder => (
+           <div key={folder} className="group relative flex items-center">
              <button
                onClick={() => {
-                  onPlatformChange(platform);
+                  onFolderChange(folder);
                   onToggleFavorites(false);
                }}
                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl transition-all ${
-                 activePlatform === platform && !showFavorites
+                 activeFolder === folder && !showFavorites
                    ? 'bg-zinc-100 dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400' 
                    : 'text-zinc-600 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800'
                }`}
              >
-               <PlatformIcon type={platform} className="w-4 h-4" />
-               <span className="truncate">{platform}</span>
+               <Folder className="w-4 h-4" />
+               <span className="truncate">{folder}</span>
              </button>
            </div>
         ))}
