@@ -1,27 +1,26 @@
 
 import React from 'react';
-import { LayoutGrid, Folder, Star, Zap, Plus, MoreHorizontal } from 'lucide-react';
+import { LayoutGrid, Star, Zap, Plus, Video } from 'lucide-react';
+import PlatformIcon from './PlatformIcon';
 
 interface SidebarProps {
-  activeFilter: string | null;
+  activePlatform: string | null;
   showFavorites: boolean;
-  onFilterChange: (filter: string | null) => void;
+  onPlatformChange: (platform: string | null) => void;
   onToggleFavorites: (show: boolean) => void;
-  availableFolders: string[];
+  platforms: string[];
   totalCount: number;
-  onAddFolder: () => void;
-  onFolderOptions: (folder: string) => void;
+  onManagePlatforms: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  activeFilter, 
+  activePlatform, 
   showFavorites,
-  onFilterChange, 
+  onPlatformChange, 
   onToggleFavorites,
-  availableFolders,
+  platforms,
   totalCount,
-  onAddFolder,
-  onFolderOptions
+  onManagePlatforms
 }) => {
   return (
     <div className="w-full h-full flex flex-col p-5 overflow-y-auto">
@@ -44,26 +43,26 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* All Items */}
         <button
           onClick={() => {
-            onFilterChange(null);
+            onPlatformChange(null);
             onToggleFavorites(false);
           }}
           className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold rounded-xl transition-all ${
-            activeFilter === null && !showFavorites
+            activePlatform === null && !showFavorites
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
               : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700'
           }`}
         >
           <div className="flex items-center gap-3">
             <LayoutGrid className="w-4 h-4" />
-            <span>All Items</span>
+            <span>All Platforms</span>
           </div>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full ${activeFilter === null && !showFavorites ? 'bg-white/20 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{totalCount}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full ${activePlatform === null && !showFavorites ? 'bg-white/20 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{totalCount}</span>
         </button>
 
         {/* My Favorites */}
         <button
           onClick={() => {
-             onFilterChange(null);
+             onPlatformChange(null);
              onToggleFavorites(true);
           }}
           className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold rounded-xl transition-all ${
@@ -77,44 +76,33 @@ const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* Categories (Folders) */}
+      {/* Platforms (Was Collections) */}
       <div className="space-y-1 flex-grow">
          <div className="flex items-center justify-between px-3 mb-3">
-           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Collections</p>
+           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Platforms</p>
            <button 
-             onClick={onAddFolder}
+             onClick={onManagePlatforms}
              className="w-9 h-9 flex items-center justify-center bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl shadow-md active:scale-90 transition-transform"
-             title="Add Folder"
+             title="Manage Platforms"
            >
              <Plus className="w-5 h-5" />
            </button>
         </div>
-        {availableFolders.map(folder => (
-           <div key={folder} className="group relative flex items-center">
+        {platforms.map(platform => (
+           <div key={platform} className="group relative flex items-center">
              <button
                onClick={() => {
-                  onFilterChange(folder);
+                  onPlatformChange(platform);
                   onToggleFavorites(false);
                }}
-               className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl transition-all pr-10 ${
-                 activeFilter === folder && !showFavorites
+               className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl transition-all ${
+                 activePlatform === platform && !showFavorites
                    ? 'bg-zinc-100 dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400' 
                    : 'text-zinc-600 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800'
                }`}
              >
-               <Folder className={`w-4 h-4 ${activeFilter === folder ? 'fill-indigo-500 text-indigo-500' : 'text-zinc-400'}`} />
-               <span className="truncate">{folder}</span>
-             </button>
-             
-             {/* More Options Button */}
-             <button
-               onClick={(e) => {
-                 e.stopPropagation();
-                 onFolderOptions(folder);
-               }}
-               className="absolute right-1 p-2.5 text-zinc-400 active:text-zinc-800 dark:active:text-zinc-200 active:bg-zinc-200 dark:active:bg-zinc-700 rounded-lg transition-colors"
-             >
-               <MoreHorizontal className="w-4 h-4" />
+               <PlatformIcon type={platform} className="w-4 h-4" />
+               <span className="truncate">{platform}</span>
              </button>
            </div>
         ))}
