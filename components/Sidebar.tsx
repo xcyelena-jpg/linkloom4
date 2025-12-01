@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { LayoutGrid, Star, Zap, Plus, Video } from 'lucide-react';
 import PlatformIcon from './PlatformIcon';
