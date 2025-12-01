@@ -1,6 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AISuggestionResponse } from "../types";
 
+// Fix for TypeScript build error "Cannot find name 'process'"
+declare const process: any;
+
 // Safety check: Don't crash if key is missing
 const apiKey = process.env.API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
